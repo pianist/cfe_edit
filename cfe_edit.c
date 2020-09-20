@@ -334,6 +334,7 @@ int verify_cfe_nvram(unsigned char *src_mem, int vendor_type)
     calc_crc = htonl(ssh_crc32(src_mem, sizeof(bcm_nvram), 0xFFFFFFFF));
 
     if (calc_crc == bcm_nvram.crc) {
+        memcpy(src_mem + sizeof(bcm_nvram) - sizeof(bcm_nvram.crc), &bcm_nvram.crc, sizeof(bcm_nvram.crc));
         printf(">> CRC     : %#08x (no mismatch)\n", bcm_nvram.crc);
     } else {
 	printf("***!!!*** calculated CRC mismatch: %#08x, %#08x\n", bcm_nvram.crc, calc_crc);
@@ -405,8 +406,9 @@ int edit_cfe_nvram(void *src_mem, int argc, char ** argv, char *options_exist) {
 
         switch (c) {
                 case 'L':  // bootline
-			memset(bcm_nvram.bootline, 0, sizeof(bcm_nvram.bootline));
-			strncpy((char *)&bcm_nvram.bootline, optarg, 255);
+			memset(bcm_nvram.bootline, 0xff, sizeof(bcm_nvram.bootline));
+			unsigned int bootline_len = strlen(optarg);
+			strncpy((char *)&bcm_nvram.bootline, optarg, bootline_len > 255 ? 255 : bootline_len);
                         break;
                 case 'B':  // board id
 			memset(bcm_nvram.board_id, 0, sizeof(bcm_nvram.board_id));
@@ -548,7 +550,13 @@ int main(int argc, char ** argv)
 	    goto exit;
 	}
         retcode += replace_cfe_nvram_crc(src_mem + nvram_offset);
+
         retcode += verify_cfe_nvram(src_mem + nvram_offset, vendor_type);
+
+	// debug
+        bcm68380_nvram_t bcm_nvram;
+        memcpy(&bcm_nvram, src_mem + nvram_offset, sizeof(bcm_nvram));
+        printf(">> !!!SAVED CRC     : %#08x\n", bcm_nvram.crc);
 
 	if (!retcode) {
 	    FILE* target_file = fopen(output_name,"w");
